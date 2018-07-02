@@ -1,0 +1,150 @@
+---
+# - hosts: order:peer
+- hosts: tencent
+  remote_user: root
+  tasks:
+
+    #################
+    #    init       #
+    #################
+#    - shell: cp /etc/apt/sources.list /etc/apt/sources.list.bak
+
+#    - name: copy docker install file
+#      copy: src=./fabric/sources.list dest=/etc/apt/sources.list force=yes
+
+    - name: mkdir
+      file: state=directory path={{FIRE_DIR}} owner=ubuntu group=ubuntu recurse=Yes 
+
+    - name: mkdir couchdb
+      file: state=directory path={{COUCHDB_DIR}} owner=ubuntu group=ubuntu recurse=Yes
+
+    - name: mkdir go
+      file: state=directory path={{GO_DIR}} owner=ubuntu group=ubuntu recurse=Yes
+
+#- name: test wget 
+#      get_url: url=https://dl.google.com/go/go1.10.3.linux-amd64.tar.gz dest=/home/ubuntu/go1.10.3.linux-amd64.tar.gz mode=0440
+
+    #################
+    #      go       #
+    #################
+
+    - name: judge go installed or not
+      shell: /usr/local/go/bin/go version
+      ignore_errors: True
+      register: go_exists
+
+    - shell: echo "go exists"
+      when: go_exists|succeeded
+
+    - shell: echo "go not exists"
+      when: go_exists|failed
+
+    - name: copy go tar file
+      copy: src=./fabric/go1.10.2.linux-amd64.tar.gz dest={{FIRE_DIR}}/go1.10.2.linux-amd64.tar.gz force=no
+      when: go_exists|failed
+
+    - name: unarchive go tar file
+      unarchive: src={{FIRE_DIR}}/go1.10.2.linux-amd64.tar.gz dest=/usr/local copy=no mode=0755
+      when: go_exists|failed
+
+    - name: update profile
+      blockinfile: path={{PROFILE}} block="export PATH=$PATH:/usr/local/go/bin\nexport GOROOT=/usr/local/go\nexport GOPATH=$HOME/go" marker="#{mark} update profile \[GO\]"
+      when: go_exists|failed
+
+    - name: source profile
+      shell: source {{PROFILE}}
+      when: go_exists|failed
+
+
+    #################
+    #    docker     #
+    #################
+    - name: judge docker installed or not
+      shell: /usr/bin/docker --version
+      ignore_errors: True
+      register: docker_exists
+      
+    - name: copy docker install file
+      copy: src=./fabric/docker_install.sh dest={{FIRE_DIR}}/docker_install.sh force=yes
+      when: docker_exists|failed
+
+    - name: install docker
+      shell: /bin/bash {{FIRE_DIR}}/docker_install.sh 
+#shell: curl -sSL http://acs-public-mirror.oss-cn-hangzhou.aliyuncs.com/docker-engine/internet | sh -　　
+      when: docker_exists|failed
+
+    - name: ubuntu add to group docker
+      shell: usermod -aG docker ubuntu
+      when: docker_exists|failed
+
+    - name: dao docker speed up
+      copy: src=./fabric/daemon.json dest=/etc/docker/daemon.json force=yes
+
+    - name: restart docker
+      service: name=docker state=restarted
+      when: docker_exists|failed
+
+    - name: judge docker-compose installed or not
+      shell: /usr/local/bin/docker-compose --version
+      ignore_errors: True
+      register: dcompose_exists
+
+    - name: install python-pip
+      shell: /usr/bin/apt install python-pip -y
+      when: dcompose_exists|failed
+
+    - name: copy docker-compose install file
+      copy: src=./fabric/docker-compose_install.sh dest={{FIRE_DIR}}/docker-compose_install.sh force=yes
+      when: dcompose_exists|failed
+    
+    - name: install docker compose
+      shell: /bin/bash {{FIRE_DIR}}/docker-compose_install.sh
+      when: dcompose_exists|failed
+
+
+    #################
+    #    nodejs     #
+    #################
+
+    - name: judge nodejs installed or not
+      shell: /usr/bin/node -v
+      ignore_errors: True
+      register: nodejs_exists
+
+    - name: copy nodejs install file
+      copy: src=./fabric/nodejs_install.sh dest={{FIRE_DIR}}/nodejs_install.sh force=yes
+      when: nodejs_exists|failed
+
+    - name: install nodejs
+      shell: /bin/bash {{FIRE_DIR}}/nodejs_install.sh
+      when: nodejs_exists|failed
+
+
+    #################
+    #    fabric     #
+    #################
+    
+    - name: judge fabric file exists
+      shell: ls {{FABRIC_DIR}}
+      ignore_errors: True
+      register: fabric_file_exists
+
+    - name: copy fabric shell file 
+      copy: src=./fabric/fabric_env_init.sh dest={{FIRE_DIR}}/fabric_env_init.sh force=yes
+      when: fabric_file_exists|failed
+
+    - name: install fabric
+      shell: /bin/bash {{FIRE_DIR}}/fabric_env_init.sh
+      when: fabric_file_exists|failed
+
+
+    - name: judge docker installed or not
+      shell: docker images | grep 'fabric-ca'
+      ignore_errors: True
+      register: docker_images_exists
+    - name: download fabric images
+      shell: /bin/bash {{FABRIC_DIR}}/fabric/examples/e2e_cli/download-dockerimages.sh -c x86_64-1.0.0 -f x86_64-1.0.0
+      when: docker_images_exists|failed
+
+
+
